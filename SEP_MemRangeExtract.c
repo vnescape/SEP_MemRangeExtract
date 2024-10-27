@@ -47,8 +47,9 @@ bool is_struct_valid(const struct phys_range* mem_struct) {
         }
     }
 
-    // Check if start and size are positive
-    if (mem_struct->start <= 0 || mem_struct->size <= 0) {
+    // Check if start and size are positive and aligned
+    if (mem_struct->start <= 0 || mem_struct->size <= 0 ||
+        (mem_struct->start % 4 != 0) || (mem_struct->size % 4 != 0)) {
         return false;
     }
 
