@@ -55,4 +55,4 @@ dkms.conf
 *.im4p*
 
 # Ignore compiled binary
-extractor
+SEP_MemRangeExtract
