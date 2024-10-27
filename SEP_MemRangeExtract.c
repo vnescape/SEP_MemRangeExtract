@@ -91,80 +91,101 @@ int main(int argc, char *argv[]) {
     // Variables for reading and searching
     char buffer[CHUNK_SIZE];
     size_t bytesRead;
-    const char *searchString = "mard"; // "dram" in reverse
-    size_t searchLength = strlen(searchString);
     long position = 0;
     int found = 0;
 
     uint64_t old_position = 0;
     uint64_t new_position = 0;
 
+    // Define the search strings
+    const char *searchStrings[] = {
+        "mard",
+        "TRPX",
+        "D0PE",
+        "RGPm",
+        "YEK",
+        "INOM",
+        "PSIE",
+        "FK"
+    };
+    size_t searchCount = sizeof(searchStrings) / sizeof(searchStrings[0]);
+
+    size_t searchLength = strlen(searchStrings[0]);
+
     // Read through the file in chunks
     while ((bytesRead = fread(buffer, 1, CHUNK_SIZE, file)) > 0) {
-        for (size_t i = 0; i <= bytesRead - searchLength; i++) {
-            if (memcmp(&buffer[i], searchString, searchLength) == 0) {
-                DEBUG_PRINT("Found '%s' at byte position: 0x%lx\n", searchString, position + i);
-                old_position = new_position;
-                new_position = position + i;
-                DEBUG_PRINT("Distance to new_position from old position: 0x%llx\n", new_position - old_position);
-                
-                // Seek to the position of the found string to read the struct
-                fseek(file, position + i, SEEK_SET);
-                struct phys_range entry;
+        for (size_t j = 0; j < searchCount; j++) { // Loop through each search string
+            const char *searchString = searchStrings[j];
+            size_t searchLength = strlen(searchString);
 
-                // Read the struct from the file
-                if (fread(&entry, sizeof(struct phys_range), 1, file) == 1) {
-                    reverse_string(entry.ctx);
+            for (size_t i = 0; i <= bytesRead - searchLength; i++) {
+                if (memcmp(&buffer[i], searchString, searchLength) == 0) {
+                    DEBUG_PRINT("Found '%s' at byte position: 0x%lx\n", searchString, position + i);
+                    old_position = new_position;
+                    new_position = position + i;
+                    DEBUG_PRINT("Distance to new_position from old position: 0x%llx\n", new_position - old_position);
                     
-                    // Check if the current struct is valid
-                    if (!is_struct_valid(&entry)) {
-                        DEBUG_PRINT("Current struct at position 0x%zx is invalid. Checking adjacent structs.\n", position + i);
-                    }
+                    // Seek to the position of the found string to read the struct
+                    fseek(file, position + i, SEEK_SET);
+                    struct phys_range entry;
 
-                    // Check for the previous struct if not at the start
-                    struct phys_range prev_entry;
-                    bool prev_valid = false;
-                    if (new_position > sizeof(struct phys_range)) {
-                        fseek(file, new_position - sizeof(struct phys_range), SEEK_SET);
-                        if (fread(&prev_entry, sizeof(struct phys_range), 1, file) == 1) {
-                            prev_valid = is_struct_valid(&prev_entry);
-                            if (prev_valid) {
-                                DEBUG_PRINT("Previous struct at position 0x%llx is valid.\n", new_position - sizeof(struct phys_range));
-                            } else {
-                                DEBUG_PRINT("Previous struct at position 0x%llx is invalid.\n", new_position - sizeof(struct phys_range));
+                    // Read the struct from the file
+                    if (fread(&entry, sizeof(struct phys_range), 1, file) == 1) {
+                        reverse_string(entry.ctx);
+                        
+                        // Check if the current struct is valid
+                        if (!is_struct_valid(&entry)) {
+                            DEBUG_PRINT("Current struct at position 0x%zx is invalid. Checking adjacent structs.\n", position + i);
+                        }
+
+                        // Check for the previous struct if not at the start
+                        struct phys_range prev_entry;
+                        bool prev_valid = false;
+                        if (new_position > sizeof(struct phys_range)) {
+                            fseek(file, new_position - sizeof(struct phys_range), SEEK_SET);
+                            if (fread(&prev_entry, sizeof(struct phys_range), 1, file) == 1) {
+                                prev_valid = is_struct_valid(&prev_entry);
+                                if (prev_valid) {
+                                    DEBUG_PRINT("Previous struct at position 0x%llx is valid.\n", new_position - sizeof(struct phys_range));
+                                } else {
+                                    DEBUG_PRINT("Previous struct at position 0x%llx is invalid.\n", new_position - sizeof(struct phys_range));
+                                }
                             }
                         }
-                    }
 
-                    // Check for the next struct, if it is at the end of the file we crash, should never happen
-                    struct phys_range next_entry;
-                    bool next_valid = false;
-                    fseek(file, new_position + sizeof(struct phys_range), SEEK_SET);
-                    if (fread(&next_entry, sizeof(struct phys_range), 1, file) == 1) {
-                        next_valid = is_struct_valid(&next_entry);
-                        if (next_valid) {
-                            DEBUG_PRINT("Next struct at position 0x%llx is valid.\n", new_position + sizeof(struct phys_range));
+                        // Check for the next struct
+                        struct phys_range next_entry;
+                        bool next_valid = false;
+                        fseek(file, new_position + sizeof(struct phys_range), SEEK_SET);
+                        if (fread(&next_entry, sizeof(struct phys_range), 1, file) == 1) {
+                            next_valid = is_struct_valid(&next_entry);
+                            if (next_valid) {
+                                DEBUG_PRINT("Next struct at position 0x%llx is valid.\n", new_position + sizeof(struct phys_range));
+                            } else {
+                                DEBUG_PRINT("Next struct at position 0x%llx is invalid.\n", new_position + sizeof(struct phys_range));
+                            }
                         } else {
-                            DEBUG_PRINT("Next struct at position 0x%llx is invalid.\n", new_position + sizeof(struct phys_range));
+                            DEBUG_PRINT("No next struct found at position 0x%llx.\n", new_position + sizeof(struct phys_range));
+                        }
+
+                        // Proceed if either the current, previous, or next struct is valid
+                        if (is_struct_valid(&entry) || prev_valid || next_valid) {
+                            printf("Read struct: ctx=%.4s, name=%.4s, start=0x%llx, size=0x%x, unk=0x%x\n",
+                                entry.ctx, entry.name, entry.start, entry.size, entry.unk);
+                            
+                            // Break after finding a valid struct
+                            found = 1;
+                            break; // Exit the for loop
+                        } else {
+                            DEBUG_PRINT("All structs at position 0x%zx are invalid. Skipping.\n", position + i);
                         }
                     } else {
-                        DEBUG_PRINT("No next struct found at position 0x%llx.\n", new_position + sizeof(struct phys_range));
+                        fprintf(stderr, "Error reading struct at position: 0x%lx\n", position + i);
                     }
-
-                    // Proceed if either the current, previous, or next struct is valid
-                    if (is_struct_valid(&entry) || prev_valid || next_valid) {
-                        printf("Read struct: ctx=%.4s, name=%.4s, start=0x%llx, size=0x%x, unk=0x%x\n",
-                            entry.ctx, entry.name, entry.start, entry.size, entry.unk);
-                        
-                        // Break after finding a valid struct
-                        found = 1;
-                        break; // Exit the for loop
-                    } else {
-                        DEBUG_PRINT("All structs at position 0x%zx are invalid. Skipping.\n", position + i);
-                    }
-                } else {
-                    fprintf(stderr, "Error reading struct at position: 0x%lx\n", position + i);
                 }
+            }
+            if (found) {
+                break; // Exit the outer loop if a valid struct has been found
             }
         }
         if (found) {
@@ -189,7 +210,7 @@ int main(int argc, char *argv[]) {
 
     // If not found, print a message
     if (!found) {
-        printf("'%s' not found in the file.\n", searchString);
+        printf("String not found in the file.\n");
     }
 
     return EXIT_SUCCESS;
