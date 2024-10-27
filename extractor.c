@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     // Variables for reading and searching
     char buffer[CHUNK_SIZE];
     size_t bytesRead;
-    const char *searchString = "mard"; // dram in reverse
+    const char *searchString = "mard"; // "dram" in reverse
     size_t searchLength = strlen(searchString);
     long position = 0;
     int found = 0;
@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
     while ((bytesRead = fread(buffer, 1, CHUNK_SIZE, file)) > 0) {
         for (size_t i = 0; i <= bytesRead - searchLength; i++) {
             if (memcmp(&buffer[i], searchString, searchLength) == 0) {
-                printf("Found '%s' at byte position: %ld\n", searchString, position + i);
+                printf("Found '%s' at byte position: 0x%lx\n", searchString, position + i);
                 found = 1;
             }
         }
